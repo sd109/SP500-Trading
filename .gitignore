@@ -7,3 +7,6 @@ data
 
 #Editor config
 .vscode
+
+#cache dirs
+data_wrangling/__pycache__
