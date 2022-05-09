@@ -1,5 +1,5 @@
 
-import os, sys, time, finnhub
+import os, sys, time, random, finnhub
 from pathlib import Path
 import datetime as dt
 import numpy as np
@@ -210,96 +210,97 @@ class TickerData:
 
 
 
-    def fetch_new_data(self, max_days=370, save=False) -> pd.DataFrame:
+    def fetch_new_data(self, max_days=370, start_date=None, max_fail_count=10):
 
         """Method for fetching new data using the Finnhub API and adding it to existing raw csv data.
         (Includes various failsafe checks and network error catching functionality.)
         """
 
+        if len(sys.argv) != 2:
+            raise Exception("Must provide Finnhub API key as only command line arg when fetching new data")
+
         #Fetch list of S&P 500 constituents from wiki
-        TICKERS = pd.read_html("https://en.wikipedia.org/wiki/List_of_S&P_500_companies")[0].Symbol.to_list()[0:1]
+        TICKERS = pd.read_html("https://en.wikipedia.org/wiki/List_of_S&P_500_companies")[0].Symbol.to_list()[:10]
         print("Tickers found from wiki:", TICKERS) #Print these to make sure wiki format hasn't changed
 
-        start_date = dt.date.today()
-        if dt.datetime.now().time() < dt.time(21, 0): #If we wont get a full trading day today, start yesterday instead
-            start_date -= dt.timedelta(days=1)
+        #Initialize some useful variables
+        if start_date == None:
+            start_date = dt.date.today().replace(day=1) - dt.timedelta(days=1) #Start on the last day of the previous month and work backwards
 
-        #Fetch data a month at a time until with find a month that we already have data for
+        tmp_data = {"Date":[], "Ticker":[], "Time":[], "c":[], "v":[]} #Use tmp dict of arrays for efficiency then convert to pd.DataFrame for saving to csv
+        fail_counter = 0 #Keep track of errors in data retrieval
+        day_counter = 0
+        current_month = start_date.month
 
+        #Initialize Finnhub instance with supplied API token
+        client = finnhub.Client(api_key=sys.argv[1])
+        # client.DEFAULT_TIMEOUT = 30 #Update network timeout
 
-        for T in TICKERS:
+        while fail_counter < max_fail_count:
 
-            print(f"\nStarting update process for ticker {T}\n----------------------------------------")
-            client = finnhub.Client(api_key=sys.argv[1])
-            # client.DEFAULT_TIMEOUT = 30 #Update network timeout
-            
+            #Get the date for which we're about to fetch data
+            date = start_date - dt.timedelta(days=day_counter)
+            if date.weekday() == 5 or date.weekday() == 6: #Skip weekends
+                day_counter += 1
+                continue
 
-            fail_count = 0 # param which will be set True if we fail to get data for 10 concurrent trading says (signifying that we're too far back in time for the api to give any more data)
-            count = 0
-            while fail_count <= 10: # Quit searching if we fail to get data for 10 concurrent trading says (signifying that we're too far back in time for the api to give any more data)
+            #Check if updated date has changed month, if so then save existing data to disk
+            if date.month != current_month:
+                print("\nSaving data to:", filename, "\n----------------------------------------\n\n")
+                df = pd.DataFrame(tmp_data) #Dict to dataframe
+                df.to_csv(filename, index=False) #Write to disk
+                current_month = date.month #Reset current month
 
-                date = start_date - dt.timedelta(days=count)
-                if date.weekday() == 5 or date.weekday() == 6: #Skip weekends
-                    count += 1
+            print(f"\nStarting update process for date: {date}\n----------------------------------------")
+            filename = self.data_dir / f"raw/{date.isoformat()[:-3]}.csv" #Slice day out of date string
+
+            #Check for existing data
+            if os.path.isfile(filename):
+                print(f"Data already exists for {date.isoformat()[:-3]}\nMove or delete existing data if you want to fetch it again.")
+                break
+
+            #Otherwise start fetching
+            for (ticker_counter, T) in enumerate(TICKERS):
+
+                print(f"Fetching data for ticker ({ticker_counter+1}) \t{T}")
+
+                #Otherwise, query finnhub for data and catch any connection errors
+                t1 = int(dt.datetime.combine(date, dt.time(14, 30)).timestamp())
+                t2 = int(dt.datetime.combine(date, dt.time(21, 0)).timestamp())
+                try: 
+                    res = client.stock_candles(symbol=T, resolution=1, _from=t1, to=t2) #Fetch data
+                    #Store it in tmp dict for conversion to DataFrame later
+                    tmp_data["c"] += res["c"]
+                    tmp_data["v"] += res["v"]
+                    tmp_data["Date"] += [dt.date.fromtimestamp(t) for t in res["t"]]
+                    tmp_data["Time"] += [dt.datetime.fromtimestamp(t).time() for t in res["t"]] #dt.time has no fromtimestamp constructor
+                    tmp_data["Ticker"] += [T for _ in res["c"]]
+
+                except:
+                    print(f"Error encountered in API call for ticker {T} on date {date} - retrying date")
+                    fail_count += 1
                     continue
 
-                filename = data_dir + f"{T}/{T}--{date}.csv"
-
-                #Check for existing data in data_dir and if there's none for this date then fetch some
-                if not os.path.isfile(filename):
-
-                    print("Fetching data for", T, date)
-
-                    #Otherwise, query finnhub for data and catch any connection errors
-                    t1 = int(dt.datetime.combine(date, dt.time(14, 30)).timestamp())
-                    t2 = int(dt.datetime.combine(date, dt.time(21, 0)).timestamp())
-                    try: 
-                        res = client.stock_candles(symbol=T, resolution=1, _from=t1, to=t2)
-                        count += 1 #Update counter once we have res for that date
-                    except:
-                        print(f"Error encountered in api call for ticker {T} on date {date} - retrying date")
-                        # count += 1 #Uncomment to skip date instead
-                        fail_count += 1
-                        continue
-
-                    #For testing
-                    if fail_count > 5:
-                        print(f"(Failed to retrieve data {fail_count} times for {T} on {date}")
-
-
-                    if res["s"] == "no_data": #Finnhub api returned no data for that day
-                        print("API returned no data for", T, date)
-                        fail_count += 1
-                        count += 1
-                    
-                    else:
-                        fail_count = 0 #Reset fail count
-
-                        df = pd.DataFrame(res)
-                        df.set_index(df.t.map(lambda x: dt.datetime.fromtimestamp(x).time()), inplace=True)
-                        df.index.name = date
-
-                        #Drop s (status) column
-                        df.drop("s", axis=1, inplace=True)
-
-                        #Save trading day's data
-                        if not os.path.isdir(data_dir + T):
-                            print(f"No existing data found for ticker {T} - making new dir at path: {data_dir + T}")
-                            os.mkdir(data_dir + T + "/")
-                        
-                        #Save data in ticker specific folder with name {T}--{date} (as csv for future portability)
-                        df.to_csv(filename)
-
-                    time.sleep(1) #Avoid hitting finnhub's api call freq limit
-
+                if res["s"] == "no_data": #Finnhub api returned no data for that day
+                    print("API returned no data for", T, date)
+                    fail_count += 1
+               
                 else:
-                    count += 1
-                    # print("Data already found at", filename, "-- skipping")
+                    fail_count = 0 #Reset fail count
 
-                #Enforce upper limit on number of days to trace back
-                if count > max_days:
-                    print(f"Max days reached ({max_days}) for ticker {T} - moving to next ticker.")
-                    break
+                time.sleep(1) #Avoid hitting finnhub's api call freq limit
+
+            day_counter += 1 #Update counter once we've fetched data for all tickers on that date
+
+            #Save data here for testing purposes
+            print("\nSaving data to:", filename, "\n\n")
+            df = pd.DataFrame(tmp_data) #Dict to dataframe
+            df.to_csv(f"{filename}-{random.random()}", index=False) #Write to disk
+
+            #Enforce upper limit on number of days to trace back while fetching data
+            if day_counter >= max_days:
+                print(f"Max days reached ({max_days} days)\nQuitting data gathering loop.")
+                break
 
 
 
@@ -324,8 +325,8 @@ if __name__ == "__main__":
 
     import pathlib
 
-    DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-Trading/data/")
-    ticker_data = TickerData(DATA_DIR)
+    # DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-Trading/data/")
+    # ticker_data = TickerData(DATA_DIR)
 
     # print(TickerData.create_time_range())
 
@@ -341,4 +342,9 @@ if __name__ == "__main__":
     # ticker_data.create_data_array(save_name="data-array.npy") 
 
     # ds = ticker_data.create_torch_dataset(t0=dt.time(19, 0), N_classes=10)
+
+
+    DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-test/")
+    ticker_data = TickerData(DATA_DIR)
+    ticker_data.fetch_new_data(max_days=3, max_fail_count=3) #Need > 31 max_days to ensure some saving is done
 
