@@ -219,8 +219,8 @@ class TickerData:
         if len(sys.argv) != 2:
             raise Exception("Must provide Finnhub API key as only command line arg when fetching new data")
 
-        #Fetch list of S&P 500 constituents from wiki
-        TICKERS = pd.read_html("https://en.wikipedia.org/wiki/List_of_S&P_500_companies")[0].Symbol.to_list()[:10]
+        #Fetch list of S&P 500 constituents from wikipedia table
+        TICKERS = pd.read_html("https://en.wikipedia.org/wiki/List_of_S&P_500_companies")[0].Symbol.to_list() #[:10] #Use slice for faster testing
         print("Tickers found from wiki:", TICKERS) #Print these to make sure wiki format hasn't changed
 
         #Initialize some useful variables
@@ -250,6 +250,9 @@ class TickerData:
                 df = pd.DataFrame(tmp_data) #Dict to dataframe
                 df.to_csv(filename, index=False) #Write to disk
                 current_month = date.month #Reset current month
+                for k in tmp_data.keys(): #Empty tmp data
+                    tmp_data[k] = []
+                
 
             print(f"\nStarting update process for date: {date}\n----------------------------------------")
             filename = self.data_dir / f"raw/{date.isoformat()[:-3]}.csv" #Slice day out of date string
@@ -277,7 +280,7 @@ class TickerData:
                     tmp_data["Ticker"] += [T for _ in res["c"]]
 
                 except:
-                    print(f"Error encountered in API call for ticker {T} on date {date} - retrying date")
+                    print(f"Error encountered in API call for ticker {T} on date {date}") #How do we make it retry this ticker if it fails?
                     fail_count += 1
                     continue
 
@@ -292,10 +295,10 @@ class TickerData:
 
             day_counter += 1 #Update counter once we've fetched data for all tickers on that date
 
-            #Save data here for testing purposes
-            print("\nSaving data to:", filename, "\n\n")
-            df = pd.DataFrame(tmp_data) #Dict to dataframe
-            df.to_csv(f"{filename}-{random.random()}", index=False) #Write to disk
+            #Save data here for quick testing purposes
+            # print("\nSaving data to:", filename, "\n\n")
+            # df = pd.DataFrame(tmp_data) #Dict to dataframe
+            # df.to_csv(f"{filename}-{random.random()}", index=False) #Write to disk
 
             #Enforce upper limit on number of days to trace back while fetching data
             if day_counter >= max_days:
@@ -346,5 +349,5 @@ if __name__ == "__main__":
 
     DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-test/")
     ticker_data = TickerData(DATA_DIR)
-    ticker_data.fetch_new_data(max_days=3, max_fail_count=3) #Need > 31 max_days to ensure some saving is done
+    ticker_data.fetch_new_data(max_days=300, max_fail_count=10) #Need > 31 max_days to ensure some saving is done
 
