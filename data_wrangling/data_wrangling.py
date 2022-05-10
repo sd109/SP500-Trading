@@ -1,5 +1,5 @@
 
-import os, sys, time, random, finnhub
+import os, sys, time, finnhub
 from pathlib import Path
 import datetime as dt
 import numpy as np
@@ -8,10 +8,13 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 import torch
 from torch.utils.data import TensorDataset
-import matplotlib.pyplot as plt
 
 class TickerData:
 
+    """
+    Class for collecting, cleaning and working with minute by minute ticker data from the S&P 500 companies.
+    """
+    
     def __init__(self, data_dir: Path) -> None:
         
         #Filepath to data directory
@@ -35,7 +38,6 @@ class TickerData:
         else:
             df = pd.read_csv(self.data_dir / "cleaned-data.csv")
 
-        # df = pd.concat(map(pd.read_csv, list((self.data_dir / "raw").iterdir())[:1])).reset_index(drop=True) #Use subset of data for fast testing
         #Convert time and date columns from strings to datetime objects
         df.Time = df.Time.map(dt.time.fromisoformat)
         df.Date = df.Date.map(dt.date.fromisoformat)
@@ -346,8 +348,6 @@ if __name__ == "__main__":
 
     # ds = ticker_data.create_torch_dataset(t0=dt.time(19, 0), N_classes=10)
 
-
-    DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-test/")
-    ticker_data = TickerData(DATA_DIR)
-    ticker_data.fetch_new_data(max_days=300, max_fail_count=10) #Need > 31 max_days to ensure some saving is done
-
+    # DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-test/")
+    # ticker_data = TickerData(DATA_DIR)
+    # ticker_data.fetch_new_data(max_days=300, max_fail_count=10) #Need > 31 max_days to ensure some saving is done
