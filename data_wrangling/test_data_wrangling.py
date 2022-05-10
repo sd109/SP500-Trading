@@ -2,8 +2,6 @@
 # Add unit tests here 
 
 import pathlib, pytest
-from venv import create
-from matplotlib import ticker
 from .data_wrangling import TickerData
 import datetime as dt
 import pandas as pd
