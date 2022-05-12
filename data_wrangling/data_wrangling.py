@@ -225,10 +225,12 @@ class TickerData:
         TICKERS = pd.read_html("https://en.wikipedia.org/wiki/List_of_S&P_500_companies")[0].Symbol.to_list() #[:10] #Use slice for faster testing
         print("Tickers found from wiki:", TICKERS) #Print these to make sure wiki format hasn't changed
 
-        #Initialize some useful variables
         if start_date == None:
             start_date = dt.date.today().replace(day=1) - dt.timedelta(days=1) #Start on the last day of the previous month and work backwards
+        elif not isinstance(start_date, dt.date):
+            start_date = dt.date.fromisoformat(start_date) #Convert to datetime instance
 
+        #Initialize some useful variables
         tmp_data = {"Date":[], "Ticker":[], "Time":[], "c":[], "v":[]} #Use tmp dict of arrays for efficiency then convert to pd.DataFrame for saving to csv
         fail_counter = 0 #Keep track of errors in data retrieval
         day_counter = 0
@@ -348,6 +350,6 @@ if __name__ == "__main__":
 
     # ds = ticker_data.create_torch_dataset(t0=dt.time(19, 0), N_classes=10)
 
-    # DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-test/")
-    # ticker_data = TickerData(DATA_DIR)
-    # ticker_data.fetch_new_data(max_days=300, max_fail_count=10) #Need > 31 max_days to ensure some saving is done
+    DATA_DIR = pathlib.Path("/home/scottd/Dropbox/Other-Programming/SP500-test/")
+    ticker_data = TickerData(DATA_DIR)
+    ticker_data.fetch_new_data(start_date="2022-01-31", max_days=300, max_fail_count=10) #Need > 31 max_days to ensure some saving is done
