@@ -187,7 +187,7 @@ class TickerData:
 
 
 
-    def create_dataset(self, cutoff_date, t0, t1=dt.time(20, 55), N_classes=2, pytorch=False):
+    def create_dataset(self, cutoff_date, t0, t1=dt.time(20, 55), N_classes=2, pytorch=False, binary_cutoff=1.0):
 
         """Performs data labelling and splits into training and testing sets based on cutoff date for input to classifier models.
         (returns torch.Dataset if pytorch=True otherwise returns numpy arrays in the order X_train, X_test, Y_train, ..., ratios_test)
@@ -202,9 +202,8 @@ class TickerData:
         X = torch.tensor(full_data[:, :, time_range <= t0])
         ratios = torch.tensor(full_data[:, 0, t1_idx] / full_data[:, 0, t0_idx]).flatten() #0th element of dim 2 is 'close' price
 
-
         if N_classes == 2: #Binary profit/loss classification
-            Y = ratios > 1.0
+            Y = ratios > binary_cutoff
         else: #Or create discrete distribution over quantiles
             quantiles = ratios.quantile(torch.linspace(0, 1, N_classes+1))
             Y = torch.zeros(len(ratios))
@@ -213,12 +212,12 @@ class TickerData:
         
         # Check class labels were assigned evenly (or approx evenly if N_classes=2)
         for y in Y.unique():
-            print("Class value:", y, "\t Instance count:", sum(Y.flatten() == y))
+            print("Class value:", y.item(), "\t Instance count:", sum(Y.flatten() == y).item())
 
         #Split into training and test sets based on cutoff date (using a cutoff date avoids data leakage into the future for prices that haven't happened yet)
         train_date_idxs = dates <= cutoff_date
         test_date_idxs = dates > cutoff_date
-        print("Number of items in training set =", sum(train_date_idxs))
+        print("\nNumber of items in training set =", sum(train_date_idxs))
         print("Number of items in test set =", sum(test_date_idxs))
 
         X_train, X_test = X[train_date_idxs, :, :],  X[test_date_idxs, :, :]
