@@ -42,3 +42,6 @@ def test_time_range():
 # @pytest.mark.skip
 # def test_data_array_creation(create_instance):
 #     arr = create_instance.create_data_array()
+
+
+# def test_torch_dataset(create_instance):
