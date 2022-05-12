@@ -39,9 +39,25 @@ def test_time_range():
     assert len(time_range) == 391 
     assert all(isinstance(t, dt.time) for t in time_range)
 
-# @pytest.mark.skip
-# def test_data_array_creation(create_instance):
-#     arr = create_instance.create_data_array()
+@pytest.mark.skip
+def test_data_array_creation(create_instance):
+    dates, data = create_instance.create_data_array()
+    # dates, data = create_instance.create_data_array(save_name=create_instance.data_dir / "data-array_test")
+    assert data.shape == (int(len(create_instance.cleaned_df) / 391), 5, 391)
+    assert len(dates) == data.shape[0] #Check that we have a date for each chunk of data
+
+def test_dataset_creation(create_instance):
+    t0=dt.time(19, 0)
+    cutoff_date=dt.date(2021, 4, 21)
+    X_train, X_test, Y_train, Y_test, R_train, R_test = create_instance.create_dataset(t0, cutoff_date, pytorch=False)
+    torch_train, torch_test = create_instance.create_dataset(t0, cutoff_date, pytorch=True)
+    assert X_train.shape[0] == len(Y_train)
+    assert X_train.shape[0] == len(R_train)
+    assert X_test.shape[0] == len(Y_test)
+    assert X_test.shape[0] == len(R_test)
+    assert len(torch_train) == X_train.shape[0]
+    assert len(torch_test) == X_test.shape[0]
+
 
 
 # def test_torch_dataset(create_instance):

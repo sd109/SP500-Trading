@@ -162,38 +162,46 @@ class TickerData:
         #Load data if not provided
         if self.cleaned_df is None:
             print("Loading cleaned data")
-            df = self.load_data(raw=False)
+            self.load_data(raw=False)
         if self.aug_df is None:
             print("Loading extra data")
-            aug_df = self.load_aug_df()
+            self.load_aug_df()
 
-        groups = df.groupby(["Date", "Ticker"]) 
+        groups = self.cleaned_df.groupby(["Date", "Ticker"]) 
         # groups = list(groups)[:10] #Uncomment to use subset for quicker testing
         data_list = []
+        date_list = []
         for (date, ticker), df_subset in tqdm(groups): #Serial seems to be about 30% faster than parallel in this particular case
-            idxs = aug_df.Date == date
-            data_list.append([df_subset.c.values, df_subset.v.values, aug_df.c_avg[idxs].values, aug_df.v_avg[idxs].values, aug_df.c_vwa[idxs].values])
+            idxs = self.aug_df.Date == date
+            data_list.append([df_subset.c.values, df_subset.v.values, self.aug_df.c_avg[idxs].values, self.aug_df.v_avg[idxs].values, self.aug_df.c_vwa[idxs].values])
+            date_list.append(str(date))
 
         data_array = np.array(data_list, dtype=dtype)
+        date_array = np.array(date_list)
 
         if save_name is not None:
             print("Saving data array to:", save_name)
-            np.save(self.data_dir / save_name, data_array)
+            np.savez(self.data_dir / save_name, dates=date_array, data=data_array)
 
-        return data_array
+        return date_array, data_array
 
 
-    def create_torch_dataset(self, t0, t1=dt.time(20, 55), N_classes=2):
 
-        """Performs data labelling and converts to torch.Dataset for input into pytorch classifier models."""
+    def create_dataset(self, t0, cutoff_date, t1=dt.time(20, 55), N_classes=2, pytorch=False):
 
-        full_data = np.load(self.data_dir / "data-array.npy")
+        """Performs data labelling and splits into training and testing sets based on cutoff date for input to classifier models.
+        (returns torch.Dataset if pytorch=True otherwise returns numpy arrays in the order X_train, X_test, Y_train, ..., ratios_test)
+        """
+
+        dates, full_data = np.load(self.data_dir / "data-array.npz").values()
+        dates = np.array(list(map(dt.date.fromisoformat, dates)))
         time_range = TickerData.create_time_range()
         t0_idx = np.where(time_range == t0)
         t1_idx = np.where(time_range == t1)
 
         X = torch.tensor(full_data[:, :, time_range <= t0])
         ratios = torch.tensor(full_data[:, 0, t1_idx] / full_data[:, 0, t0_idx]).flatten() #0th element of dim 2 is 'close' price
+
 
         if N_classes == 2: #Binary profit/loss classification
             Y = ratios > 1.0
@@ -202,13 +210,23 @@ class TickerData:
             Y = torch.zeros(len(ratios))
             for edge in quantiles[1:-1]:
                 Y += (ratios > edge)
-                # print(edge, sum(ratios >= edge))
         
-        # Check class labels were assigned evenly
+        # Check class labels were assigned evenly (or approx evenly if N_classes=2)
         for y in Y.unique():
             print("Class value:", y, "\t Instance count:", sum(Y.flatten() == y))
 
-        return TensorDataset(X, Y, ratios)
+        #Split into training and test sets based on cutoff date (using a cutoff date avoids data leakage into the future for prices that haven't happened yet)
+        train_date_idxs = dates <= cutoff_date
+        test_date_idxs = dates > cutoff_date
+
+        X_train, X_test = X[train_date_idxs, :, :],  X[test_date_idxs, :, :]
+        Y_train, Y_test = Y[train_date_idxs], Y[test_date_idxs]
+        ratios_train, ratios_test = ratios[train_date_idxs], ratios[test_date_idxs]
+
+        if pytorch:
+            return TensorDataset(X_train, Y_train, ratios_train), TensorDataset(X_test, Y_test, ratios_test)
+        else:
+            return X_train.numpy(), X_test.numpy(), Y_train.numpy(), Y_test.numpy(), ratios_train.numpy(), ratios_test.numpy()
 
 
 
