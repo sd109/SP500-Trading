@@ -164,10 +164,10 @@ class TickerData:
             print("Loading cleaned data")
             df = self.load_data(raw=False)
         if self.aug_df is None:
-            print("Loading averaged data")
+            print("Loading extra data")
             aug_df = self.load_aug_df()
 
-        groups = df.groupby(["Date", "Ticker"])
+        groups = df.groupby(["Date", "Ticker"]) 
         # groups = list(groups)[:10] #Uncomment to use subset for quicker testing
         data_list = []
         for (date, ticker), df_subset in tqdm(groups): #Serial seems to be about 30% faster than parallel in this particular case
