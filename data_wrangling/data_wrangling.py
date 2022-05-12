@@ -187,7 +187,7 @@ class TickerData:
 
 
 
-    def create_dataset(self, t0, cutoff_date, t1=dt.time(20, 55), N_classes=2, pytorch=False):
+    def create_dataset(self, cutoff_date, t0, t1=dt.time(20, 55), N_classes=2, pytorch=False):
 
         """Performs data labelling and splits into training and testing sets based on cutoff date for input to classifier models.
         (returns torch.Dataset if pytorch=True otherwise returns numpy arrays in the order X_train, X_test, Y_train, ..., ratios_test)
@@ -218,6 +218,8 @@ class TickerData:
         #Split into training and test sets based on cutoff date (using a cutoff date avoids data leakage into the future for prices that haven't happened yet)
         train_date_idxs = dates <= cutoff_date
         test_date_idxs = dates > cutoff_date
+        print("Number of items in training set =", sum(train_date_idxs))
+        print("Number of items in test set =", sum(test_date_idxs))
 
         X_train, X_test = X[train_date_idxs, :, :],  X[test_date_idxs, :, :]
         Y_train, Y_test = Y[train_date_idxs], Y[test_date_idxs]
