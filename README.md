@@ -24,5 +24,7 @@ The key steps involved are:
 
 ## Current Status
 
+The `data_wrangling` module is fully functional and allows for collecting and preprocessing price data. The notebooks in the model directory are for experimenting with various modelling approaches. 
+
 
 ## Future Plans
